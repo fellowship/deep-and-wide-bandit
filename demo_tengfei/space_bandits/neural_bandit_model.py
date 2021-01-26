@@ -12,8 +12,6 @@ from torch import nn
 from torch.functional import unique
 import torch.nn.functional as F
 
-from .bayesian_nn import BayesianNN
-
 def build_action_mask(actions, num_actions):
     """
     Takes a torch tensor with integer values.

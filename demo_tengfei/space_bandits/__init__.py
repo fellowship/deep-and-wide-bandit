@@ -9,7 +9,6 @@ import torch
 from .bandit_algorithm import BanditAlgorithm
 from .contextual_dataset import ContextualDataset
 from .neural_bandit_model import NeuralBanditModel
-from .linear import LinearBandits
 from .neural_linear import NeuralBandits
 
 import os
