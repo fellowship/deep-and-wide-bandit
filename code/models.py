@@ -90,18 +90,18 @@ def build_wide_and_deep_model(feature_column_dict, inputs, wdmodel_dir,
 
     #Build the Deep Model
     d_feature_layer = tf.keras.layers.DenseFeatures(deep_wd_feature_columns, name="deep_feature_layer")(inputs)
-    d_hidden_layer_1 = tf.keras.layers.Dense(deep_wd_1_hidden_units[0], activation="relu", name="deep_fc_1")(d_feature_layer)
-    d_hidden_layer_2 = tf.keras.layers.Dense(deep_wd_1_hidden_units[1], activation="relu", name="deep_fc_2")(d_hidden_layer_1)
-    d_hidden_layer_3 = tf.keras.layers.Dense(deep_wd_1_hidden_units[2], activation="relu", name="deep_fc_3")(d_hidden_layer_2)
+    d_hidden_layer_1 = tf.keras.layers.Dense(deep_wd_hidden_units[0], activation="relu", name="deep_fc_1")(d_feature_layer)
+    d_hidden_layer_2 = tf.keras.layers.Dense(deep_wd_hidden_units[1], activation="relu", name="deep_fc_2")(d_hidden_layer_1)
+    d_hidden_layer_3 = tf.keras.layers.Dense(deep_wd_hidden_units[2], activation="relu", name="deep_fc_3")(d_hidden_layer_2)
 
     #Combine the Wide & Deep
     wd_both = tf.keras.layers.concatenate([w_feature_layer, d_hidden_layer_3])
     wd_output_layer = tf.keras.layers.Dense(10, activation="softmax", name="deep_output")(wd_both)
-
     wd_model = tf.keras.Model(inputs = inputs, outputs=wd_output_layer)
     wd_model.compile(optimizer="adam", 
                 loss="categorical_crossentropy", 
                 metrics=['accuracy', tf.keras.metrics.AUC()])
+    
     return wd_model, wdmodel_path
 
 
