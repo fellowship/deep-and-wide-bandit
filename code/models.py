@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 
 def build_wide_model(feature_column_dict, inputs, wmodel_dir, inc_numeric=False, 
                     name="wmodel.h5", ckpt_name="wmodel_checkpoint.h5"):
@@ -105,7 +106,7 @@ def build_wide_and_deep_model(feature_column_dict, inputs, wdmodel_dir,
     return wd_model, wdmodel_path
 
 
-def build_bayesian_model(feature_column_dict, inputs, wdmodel_dir, p=0.3, 
+def build_bayesian_model(feature_column_dict, inputs, bayesian_dir, p=0.3, 
                     name="bmodel.h5", ckpt_name="bmodel_checkpoint.h5"):
 
     """
@@ -145,3 +146,86 @@ def build_bayesian_model(feature_column_dict, inputs, wdmodel_dir, p=0.3,
                 metrics=['accuracy', tf.keras.metrics.AUC()])
     
     return bayesian_model, bayesian_path
+
+
+def find_ucb(raw_samples_l, value_index):
+  
+  raw_samples_array = np.array(raw_samples_l)
+
+  #Array is 3D - 0: Samples, 1: Row, 2: Column
+  #Sort the array along 0th axis
+  raw_samples_array[::-1].sort(axis=0)
+
+  #Pick the 5th largest value
+  ucb_batch = raw_samples_array[value_index-1]
+
+  #Return the value
+  return ucb_batch    
+    
+def evaluate_bandit(test_model, dl, num_of_samples=100):
+
+    """
+    Returns the TS and UCB accuracy for model on dl
+    """
+    #Constructing a intermediate wide and deep model to get the static concatenated outputs
+    layer_name = "multihead"
+    till_multihead_model = tf.keras.Model(inputs=test_model.input, outputs=test_model.get_layer(layer_name).output)
+
+    #Now, constructing the multi-head that the concatenated input has to run through
+    dropout_input = tf.keras.Input(shape=(64, ), dtype=tf.float32, name="multihead_output")
+    next_layer = dropout_input
+    for layer in test_model.layers[13:]:
+        if "dropout" in layer.name:
+            next_layer = layer(next_layer, training=True)
+        else:
+            next_layer = layer(next_layer)
+    post_multihead_model = tf.keras.Model(inputs=dropout_input, outputs=next_layer)
+    
+    #Setting up variables to store running outputs
+    value_index = num_of_samples - int(0.95 * num_of_samples)
+    batch_cnt = 0
+    
+    #Variable to store comparison between bandit outputs & labels
+    ts_bandit_output_l = []
+    ucb_bandit_output_l = []
+
+    #Iterate through the Batched Dataset, one batch at a time
+    for features, labels in dl:
+    
+        if (batch_cnt + 1) % 5 == 0:
+            print(f"[INFO] Working on Batch #{batch_cnt + 1}")
+
+        #Generate predictions of the model for a given batch
+        multihead_output = till_multihead_model.predict(features)
+        ucb_working_l = []
+
+        for multi_cnt in range(num_of_samples):
+
+            if not((batch_cnt + 1) % 5) and not((multi_cnt + 1) % 5):
+                print(f"[INFO] Drawing sample #{multi_cnt + 1} from the Posterior...")
+
+            output = post_multihead_model.predict(multihead_output)
+            
+            ucb_working_l.append(output) #Now begin drawing multiple samples for UCB
+            
+            if not(multi_cnt): #Draw only one sample for TS
+                ts_batch = output
+                #ts_bandit_output_l.append(output)
+    
+        ucb_batch = find_ucb(ucb_working_l, value_index)         
+        #ucb_bandit_output_l.append(ucb_batch)
+        ts_batch_class = np.argmax(ts_batch, axis=1)      
+        ucb_batch_class = np.argmax(ucb_batch, axis=1)
+        
+        #Compare output batch of class labels to label_batch
+        ts_bandit_output_l.append(ts_batch_class == labels.to_numpy())
+        ucb_bandit_output_l.append(ucb_batch_class == labels.to_numpy())
+        batch_cnt += 1        
+
+    ts_bandit_output = np.concatenate(ts_bandit_output_l, axis=0)
+    del ts_bandit_output_l
+    ucb_bandit_output = np.concatenate(ucb_bandit_output_l, axis=0)
+    del ucb_bandit_output_l
+
+    return np.mean(ts_bandit_output), np.mean(ucb_bandit_output)
+    
